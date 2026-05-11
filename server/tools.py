@@ -1,5 +1,5 @@
 """
-Phases 1 & 2 — Tool definitions.
+Phases 1, 2 & 3 — Tool definitions.
 
 Key things to observe in this file:
   - Tools are plain Python functions. No MCP-specific code here at all.
@@ -21,13 +21,23 @@ Phase 2 note:
   Tools WRITE state (create_note, delete_note).
   Resources READ state (notes://all, notes://{note_id}).
   This separation is a core MCP design principle.
+
+Phase 3 note:
+  ctx: Context is injected by FastMCP at call time.
+  It does NOT appear in the tool's JSON schema — the LLM never sees it.
+  Any tool can gain ctx by adding it to its signature.
+  Phase 3 tools are async because ctx methods (logging, progress,
+  read_resource, sample) are all coroutines.
 """
 
 from __future__ import annotations
 
+import json
 import math
 from datetime import date, datetime
 from typing import Literal
+
+from fastmcp import Context
 
 from server import store
 
@@ -162,3 +172,91 @@ def days_until(target_date: str) -> int:
     """
     target = date.fromisoformat(target_date)
     return (target - date.today()).days
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — Context tools
+#
+# ctx: Context is identified by its type annotation and injected by FastMCP.
+# It is stripped from the JSON schema so the LLM never knows it exists.
+# All three tools are async because ctx methods are coroutines.
+# ---------------------------------------------------------------------------
+
+async def analyze_texts(texts: list[str], ctx: Context) -> list[dict]:
+    """
+    Run word_count on a list of texts, reporting progress after each one.
+    Logs a warning for any empty string and skips it.
+    Demonstrates: ctx.info(), ctx.warning(), ctx.report_progress().
+    """
+    results = []
+    total = len(texts)
+
+    await ctx.info(f"Starting batch analysis of {total} text(s).")
+
+    for i, text in enumerate(texts):
+        await ctx.report_progress(i, total)
+
+        if not text.strip():
+            await ctx.warning(f"Text at index {i} is empty — skipping.")
+            continue
+
+        await ctx.info(f"Analysing text {i + 1}/{total}...")
+        counts = word_count(text)
+        counts["index"] = i
+        results.append(counts)
+
+    await ctx.report_progress(total, total)
+    await ctx.info("Batch analysis complete.")
+    return results
+
+
+async def note_stats(note_id: str, ctx: Context) -> dict:
+    """
+    Fetch a note via its MCP resource URI and return word-count statistics.
+    Demonstrates: ctx.read_resource() — a tool reading from a resource.
+    This is how tools and resources compose: tools can pull resource data
+    without duplicating the fetch logic.
+    """
+    await ctx.info(f"Reading resource notes://{note_id} ...")
+
+    contents = await ctx.read_resource(f"notes://{note_id}")
+    if not contents:
+        await ctx.error(f"Resource notes://{note_id} returned no content.")
+        return {"error": f"Note '{note_id}' not found."}
+
+    raw = contents[0].text
+    note = json.loads(raw)
+
+    if "error" in note:
+        await ctx.error(note["error"])
+        return note
+
+    await ctx.info("Resource fetched. Running word count...")
+    stats = word_count(note["body"])
+    stats["note_id"] = note_id
+    stats["title"] = note["title"]
+    return stats
+
+
+async def smart_summarize(text: str, ctx: Context) -> str:
+    """
+    Ask the LLM to summarise text using MCP sampling (ctx.sample).
+    Sampling lets the SERVER trigger an LLM call; the client (Claude, etc.)
+    fulfils the request and sends the response back.
+
+    Important: sampling only works with clients that declare the sampling
+    capability (e.g. Claude Desktop, programmatic FastMCP clients).
+    The MCP inspector does not support it — calling this tool there will
+    raise a McpError. That is expected behaviour, not a bug.
+    """
+    await ctx.info("Requesting LLM summary via sampling...")
+
+    prompt = (
+        "Summarise the following text in two or three concise sentences. "
+        "Do not add commentary — just the summary.\n\n"
+        f"{text}"
+    )
+
+    result = await ctx.sample(prompt)
+    await ctx.info("Sampling complete.")
+    return result.text
