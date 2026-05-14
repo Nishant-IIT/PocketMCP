@@ -219,12 +219,17 @@ async def note_stats(note_id: str, ctx: Context) -> dict:
     """
     await ctx.info(f"Reading resource notes://{note_id} ...")
 
-    contents = await ctx.read_resource(f"notes://{note_id}")
-    if not contents:
+    # ctx.read_resource() returns a ResourceResult (server-side type).
+    # Its .contents list holds the actual TextResourceContents items.
+    # This is different from client.read_resource() which returns the list directly.
+    resource_result = await ctx.read_resource(f"notes://{note_id}")
+    if not resource_result.contents:
         await ctx.error(f"Resource notes://{note_id} returned no content.")
         return {"error": f"Note '{note_id}' not found."}
 
-    raw = contents[0].text
+    # Server-side ResourceContent uses .content (str), not .text.
+    # Client-side TextResourceContents uses .text — different types, same data.
+    raw = resource_result.contents[0].content
     note = json.loads(raw)
 
     if "error" in note:
