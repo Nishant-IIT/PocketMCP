@@ -156,7 +156,25 @@ If the development server fails to start, check if the port is already in use:
 lsof -i :PORT_NUMBER
 ```
 
+## Authentication
+
+PocketMCP includes bearer token authentication for HTTP mode. See [authentication.md](authentication.md) for:
+- How auth works with LLMs
+- Three authentication levels (dev, shared secret, JWT)
+- Security best practices
+- Common issues and solutions
+
+**Quick start with auth:**
+```bash
+# Start auth server
+python server/auth_server.py
+
+# Test it
+python client/auth_client.py
+```
+
 ## Additional Resources
 
 - [FastMCP Documentation](https://github.com/jlowin/fastmcp)
 - [MCP Protocol Specification](https://modelcontextprotocol.io/)
+- [Authentication Guide](authentication.md)
