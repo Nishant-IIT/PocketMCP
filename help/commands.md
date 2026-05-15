@@ -5,7 +5,7 @@
 ### Create Virtual Environment
 ```bash
 # Using uv (recommended)
-uv venv
+uv venv 
 ```
 
 ### Activate Virtual Environment
@@ -39,22 +39,71 @@ uv add fastmcp>=3.2.4
 
 ### Development Mode (with MCP Inspector)
 ```bash
-# Standard dev mode
-fastmcp dev main.py
-
-# Or with explicit inspector flag
+# Run with MCP Inspector (browser UI to test tools)
 fastmcp dev inspector main.py
 ```
 This runs the server with a browser UI to test tools interactively.
 
-### Production Mode (stdio server)
+### Production Mode
+
+#### Option 1: stdio (default)
 ```bash
 fastmcp run main.py
-```
-Or simply:
-```bash
+# or
 python main.py
 ```
+Best for: Claude Desktop integration, command-line clients
+
+**How to interact:**
+- Run the Python client: `python client/client.py`
+- Add to Claude Desktop config (see below)
+- Use with any MCP-compatible client
+
+#### Option 2: HTTP Server
+```bash
+fastmcp run main.py --transport http
+# or with custom host/port
+fastmcp run main.py --transport http --host 0.0.0.0 --port 8080
+```
+Best for: Web applications, REST API access, remote connections
+
+**How to interact:**
+- Access at `http://localhost:8000/mcp/` (default)
+- Use HTTP client or browser
+- Connect from remote applications
+
+#### Option 3: SSE (Server-Sent Events)
+```bash
+fastmcp run main.py --transport sse
+```
+Best for: Real-time streaming, web dashboards
+
+**How to interact:**
+- Access at `http://localhost:8000/sse/` (default)
+- Receive real-time updates via SSE
+
+### Claude Desktop Integration
+
+Add to your Claude Desktop MCP config (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "pocketmcp": {
+      "command": "python",
+      "args": ["/absolute/path/to/PocketMCP/main.py"]
+    }
+  }
+}
+```
+
+### Development Mode with Auto-Reload
+```bash
+fastmcp run main.py --reload
+# or with HTTP
+fastmcp run main.py --transport http --reload
+```
+Automatically restarts the server when files change.
 
 ## Project Structure
 

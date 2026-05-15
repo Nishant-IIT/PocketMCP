@@ -4,34 +4,36 @@ Server assembly — owns one job: create the FastMCP instance and register every
 Phase 1: tools registered via mcp.add_tool(fn)
 Phase 2: resources + prompts registered via register_*(mcp)
 Phase 3: context-aware tools (analyze_texts, note_stats, smart_summarize)
-Phase 5: sub-servers mounted via mcp.mount(prefix, sub_server)
-        proxy server demonstrates re-exposing a remote server locally
+Phase 5: sub-servers mounted via mcp.mount(sub_server, namespace=...)
+Phase 6: middleware stack added via mcp.add_middleware(...)
 
-After Phase 5 the inspector will show:
-    Tools:     19  (13 flat + 3 text_* + 3 math_*)
+After Phase 6 the inspector still shows:
+    Tools:     19
     Resources:  2
     Templates:  1
     Prompts:    2
+Middleware is invisible to the inspector — it wraps the stack at runtime.
 
-Composition concepts in this file:
-    mcp.mount(text_mcp, prefix="text")
-        Every tool in text_mcp is imported under the "text" namespace.
-        "word_frequency" becomes "text_word_frequency", and so on.
-        The sub-server is unaware of the parent — it still works standalone.
+Middleware execution order (outermost → innermost):
+    LoggingMiddleware        — logs every request/response at DEBUG level
+    TimingMiddleware         — logs execution time per call
+    RateLimitingMiddleware   — enforces a per-second request cap
+    ArgumentLoggerMiddleware — prints tool name + args to stdout (custom)
+    CallStatsMiddleware      — accumulates per-tool call stats (custom)
 
-    mcp.mount(math_mcp, prefix="math")
-        Same pattern for math tools.
-
-    Proxy pattern (shown commented out — needs a running HTTP server):
-        proxy = FastMCP.as_proxy("http://localhost:9000/mcp")
-        mcp.mount("remote", proxy)
-        Every tool/resource/prompt on the remote server is transparently
-        re-exposed here, prefixed with "remote_".
+The onion model:
+    request  →  Logging → Timing → RateLimit → ArgLogger → Stats → [tool]
+    response ←  Logging ← Timing ← RateLimit ← ArgLogger ← Stats ← [tool]
 """
 
 from fastmcp import FastMCP
+from fastmcp.server.middleware.error_handling import ErrorHandlingMiddleware
+from fastmcp.server.middleware.logging import LoggingMiddleware
+from fastmcp.server.middleware.rate_limiting import RateLimitingMiddleware
+from fastmcp.server.middleware.timing import TimingMiddleware
 
 from server.math_server import math_mcp
+from server.middleware import ArgumentLoggerMiddleware, CallStatsMiddleware
 from server.prompts import register_prompts
 from server.resources import register_resources
 from server.text_server import text_mcp
@@ -63,8 +65,33 @@ mcp = FastMCP(
 )
 
 # ---------------------------------------------------------------------------
+# Middleware stack (Phase 6)
+# Order matters: first added = outermost wrapper.
+# ---------------------------------------------------------------------------
+
+# Built-in: structured DEBUG-level logging for every request/response
+mcp.add_middleware(LoggingMiddleware())
+
+# Built-in: logs wall-clock time for every tool call / resource read
+mcp.add_middleware(TimingMiddleware())
+
+# Built-in: token-bucket rate limiter — 20 requests/second globally
+mcp.add_middleware(RateLimitingMiddleware(max_requests_per_second=20.0))
+
+# Built-in: catches exceptions from tools and returns them as MCP errors
+# instead of crashing the server
+mcp.add_middleware(ErrorHandlingMiddleware())
+
+# Custom: prints tool name + args to stdout on every call
+mcp.add_middleware(ArgumentLoggerMiddleware(max_arg_len=60))
+
+# Custom: keeps per-tool call/error/latency stats; exported as `call_stats`
+# so the client demo can query it directly via the Python object reference.
+call_stats = CallStatsMiddleware()
+mcp.add_middleware(call_stats)
+
+# ---------------------------------------------------------------------------
 # Flat tools (Phases 1–3)
-# Registered directly — no prefix, no namespace.
 # ---------------------------------------------------------------------------
 mcp.add_tool(word_count)
 mcp.add_tool(change_case)
@@ -82,36 +109,9 @@ mcp.add_tool(smart_summarize)
 
 # ---------------------------------------------------------------------------
 # Mounted sub-servers (Phase 5)
-#
-# mount(prefix, sub_server) imports every component from sub_server and
-# prepends the prefix + "_" to tool names:
-#
-#   text_mcp.word_frequency  →  text_word_frequency
-#   text_mcp.reverse_words   →  text_reverse_words
-#   text_mcp.extract_numbers →  text_extract_numbers
-#
-#   math_mcp.factorial       →  math_factorial
-#   math_mcp.gcd             →  math_gcd
-#   math_mcp.stats           →  math_stats
-#
-# The sub-servers themselves are unchanged — they still run standalone.
-# Mounting is non-destructive composition.
 # ---------------------------------------------------------------------------
 mcp.mount(text_mcp, namespace="text")
 mcp.mount(math_mcp, namespace="math")
-
-# ---------------------------------------------------------------------------
-# Proxy pattern — uncomment when you have a remote server running.
-#
-# A proxy re-exposes ALL tools/resources/prompts from a remote MCP server
-# as if they were local. The parent server is the single entry point;
-# the client never talks to the remote directly.
-#
-#   proxy = FastMCP.as_proxy("http://localhost:9000/mcp")
-#   mcp.mount("remote", proxy)
-#
-# This is how you build an aggregator server: one URL, many back-ends.
-# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Resources & Prompts

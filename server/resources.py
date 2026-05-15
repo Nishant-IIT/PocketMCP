@@ -5,15 +5,15 @@ Resources are READ-ONLY data sources identified by a URI.
 The LLM (or client) can request them, but cannot call them like tools.
 
 Three kinds shown here:
-  1. Static resource  — fixed URI, same content every call   (info://server)
-  2. List resource    — fixed URI, dynamic content           (notes://all)
-  3. Template resource — URI with a {param} placeholder     (notes://{note_id})
+    1. Static resource  — fixed URI, same content every call   (info://server)
+    2. List resource    — fixed URI, dynamic content           (notes://all)
+    3. Template resource — URI with a {param} placeholder     (notes://{note_id})
 
 Key differences from tools:
-  - Resources have a URI, tools have a name.
-  - Resources are for READ access; tools are for actions / writes.
-  - Resources support MIME types so clients know how to render the content.
-  - Template resources are listed separately from regular resources in the
+    - Resources have a URI, tools have a name.
+    - Resources are for READ access; tools are for actions / writes.
+    - Resources support MIME types so clients know how to render the content.
+    - Template resources are listed separately from regular resources in the
     MCP spec — clients must know to expand the template before fetching.
 
 We use a register_resources(mcp) helper so resource logic lives here

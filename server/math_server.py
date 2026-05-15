@@ -7,7 +7,7 @@ they carry their own tools, resources, and prompts if needed.
 
 Run standalone:   fastmcp dev server/math_server.py
 Mount into main:  mcp.mount("math", math_mcp)
-                  → tools become  math_factorial, math_gcd, math_stats
+    → tools become  math_factorial, math_gcd, math_stats
 """
 
 from __future__ import annotations

@@ -7,7 +7,7 @@ be mounted into a larger server.
 
 Run standalone:   fastmcp dev server/text_server.py
 Mount into main:  mcp.mount("text", text_mcp)
-                  → tools become  text_word_frequency, text_reverse_words, ...
+    → tools become  text_word_frequency, text_reverse_words, ...
 """
 
 from __future__ import annotations
